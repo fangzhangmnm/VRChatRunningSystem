@@ -1,11 +1,11 @@
-﻿
+
 using UdonSharp;
 using UnityEngine;
 using VRC.SDKBase;
 using VRC.Udon;
 using UnityEngine.UI;
 
-public class Test1 : UdonSharpBehaviour
+public class RunningSystem : UdonSharpBehaviour
 {
 
     public float accelerationDeadZoneLower = .5f;
