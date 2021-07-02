@@ -12,13 +12,16 @@ public class RunningSystem : UdonSharpBehaviour
     public float accelerationDeadZoneUpper = 4f;
     public float velocityMultiplyer = 10f;
     public float maxSpeed = 20f;
-    public float amplitudeSmoothTime = .7f;
+    public float accelerationSmoothTime = .1f;
     public float playerSpeedSmoothTime = .7f;
+    public float maxStopTime = .2f;//Some time amplitude will be very small for a very short amount of time
 
     Vector3 headSmoothedLocalAcceleration, headSmoothedLocalVelocity;
     Vector3 headOldLocalPosition, headOldLocalVelocity;
-    float trackedSmoothSpeed,smoothAmplitude;
+    float estimatedSpeed;
     float avatarHeight = 1.5f;
+    float stopTime;
+    bool stopped = true;
 
     private void Start()
     {
@@ -41,50 +44,60 @@ public class RunningSystem : UdonSharpBehaviour
         Vector3 headLocalPosition = GetHeadLocalPosition();
         Vector3 headLocalVelocity = (headLocalPosition - headOldLocalPosition) / Time.fixedDeltaTime;
         Vector3 headLocalAcceleration = (headLocalVelocity - headOldLocalVelocity) / Time.fixedDeltaTime;
-        headSmoothedLocalAcceleration = Vector3.Lerp(headSmoothedLocalAcceleration, headLocalAcceleration, Time.fixedDeltaTime / .07f);
-        headSmoothedLocalVelocity = Vector3.Lerp(headSmoothedLocalVelocity, headLocalVelocity, Time.fixedDeltaTime / .07f);
+        headSmoothedLocalAcceleration = Vector3.Lerp(headSmoothedLocalAcceleration, headLocalAcceleration, Time.fixedDeltaTime / accelerationSmoothTime);
+        headSmoothedLocalVelocity = Vector3.Lerp(headSmoothedLocalVelocity, headLocalVelocity, Time.fixedDeltaTime / accelerationSmoothTime);
         float acceleration = headSmoothedLocalAcceleration.y;
         float velocity = headSmoothedLocalVelocity.y;
         float amplitude = Mathf.Sqrt(acceleration * acceleration + velocity * velocity * 355.30576f);
 
-        smoothAmplitude = Mathf.Lerp(smoothAmplitude, amplitude, Time.fixedDeltaTime / amplitudeSmoothTime);
-
         avatarHeight = Mathf.Lerp(avatarHeight, Mathf.Max(.3f, headLocalPosition.y), Time.deltaTime / 2f);
 
-
-
-        if (amplitude < accelerationDeadZoneLower * avatarHeight)
+        if (stopped)
         {
-            trackedSmoothSpeed = 0;
+            if(amplitude > accelerationDeadZoneUpper * avatarHeight)
+            {
+                stopped = false;
+                stopTime = 0;
+            }
         }
-        else if (trackedSmoothSpeed > 0.05f || amplitude > accelerationDeadZoneUpper * avatarHeight)
+        if (!stopped)
         {
-            trackedSmoothSpeed = Mathf.Lerp(trackedSmoothSpeed, amplitude * 0.05305f, Time.fixedDeltaTime / playerSpeedSmoothTime);
+            if (amplitude < accelerationDeadZoneLower * avatarHeight)
+            {
+                stopTime += Time.fixedDeltaTime;
+                if (stopTime > maxStopTime)
+                {
+                    stopped = true;
+                    estimatedSpeed = 0;
+                }
+            }
         }
+        if(!stopped)
+            estimatedSpeed = Mathf.Lerp(estimatedSpeed, amplitude * 0.05305f, Time.fixedDeltaTime / playerSpeedSmoothTime);
+
 
         VRCPlayerApi localPlayer = Networking.LocalPlayer;
-        float speed = Mathf.Min(maxSpeed, trackedSmoothSpeed * velocityMultiplyer);
+        float speed = Mathf.Min(maxSpeed, estimatedSpeed * velocityMultiplyer);
         localPlayer.SetWalkSpeed(speed);
         localPlayer.SetRunSpeed(speed);
         localPlayer.SetStrafeSpeed(speed);
 
         headOldLocalPosition = headLocalPosition;
         headOldLocalVelocity = headLocalVelocity;
-        /*
-        if (++elapsed >= 5)
-        {
-            UpdateOscilloscope(acceleration / 10, velocity, amplitude / 10, trackedSmoothSpeed);
-        }
-        */
+        if(debugRawImage)
+            if (++elapsed >= 2)
+            {
+                UpdateOscilloscope(accelerationDeadZoneUpper * avatarHeight / 10, amplitude / 10, velocity,acceleration/10);
+            }
     }
     #region Debug
-    /*
+    
     int elapsed;
-    public RawImage image;//128x64, ARGB32, write enabled
+    public RawImage debugRawImage;//128x64, ARGB32, write enabled
     int curX;
     void UpdateOscilloscope(float val1, float val2, float val3, float val4)
     {
-        Texture2D texture=(Texture2D)image.mainTexture;
+        Texture2D texture=(Texture2D)debugRawImage.mainTexture;
         for (int i = 0; i < 128; ++i)
             texture.SetPixel(curX, i, Color.white);
         texture.SetPixel(curX, 32, Color.grey);
@@ -102,6 +115,6 @@ public class RunningSystem : UdonSharpBehaviour
         texture.Apply();
         ++curX;
     }
-    */
+    
     #endregion
 }
